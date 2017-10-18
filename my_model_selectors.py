@@ -29,7 +29,63 @@ class ModelSelector(object):
         self.verbose = verbose
 
     def select(self):
-        raise NotImplementedError
+        """
+        Universal model selector function for select() methods of SelectorCV, SelectorBIC and SelectorDIC
+        """
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+        # TODO implement model selection using CV
+        #print('Inside base select() function. Sequences passed:', self.sequences)
+        best_score = -float('inf')
+        best_components_number = self.min_n_components
+        best_model = None
+        n_splits = min(len(self.lengths), 3)
+        split_method = KFold(n_splits)
+        for components in range(self.min_n_components, self.max_n_components + 1):
+            score = 0
+            iter_counter = 0
+            try:
+                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
+                    iter_counter += 1
+                    X_train, len_train = combine_sequences(cv_train_idx, self.sequences)
+                    X_test, len_test = combine_sequences(cv_test_idx, self.sequences)
+                    hmm_model = GaussianHMM(n_components = components, covariance_type = 'diag', n_iter = 1000,
+                                            random_state = self.random_state, verbose = False).fit(X_train, len_train)
+                    score += self.model_score(hmm_model, X_test, len_test, components)
+                    #print('Model fitted. score = ', score)
+                score /= iter_counter if iter_counter > 0 else 1
+                if score > best_score:
+                    best_score = score
+                    best_components_number = components
+                    best_model = hmm_model
+            except:
+                pass
+        if self.__class__.__name__ == 'SelectorCV':
+            # need to train the model over all data available for Log likelihood model selection
+            best_model = self.base_model(best_components_number)
+        return best_model
+
+    def model_score(model, X, length, n_components):
+        """
+        Returns different model scores for CV, BIC and DIC according to appropriate formulas. Returned score defined
+        by class_name.
+        Valid class names:
+        'SelectorCV': Log likelihood
+        'SelectorBIC': Bayesian information criteria
+        'SelectorDIC': Discriminative information criteria
+        """
+        if self.__class__.__name__ == "SelectorCV":
+            return model.score(X, length)
+        if class_name == "SelectorBIC":
+            #according to https://discussions.udacity.com/t/parameter-in-bic-selector/394318/2
+            #BIC = -2 * LogL + p * LogN
+            #LogN = log(len(X))
+            #p = n_components^2 + 2*n_components*model.n_features - 1
+            logL = model.score(X, length)
+            logN = np.log(len(X))
+            p = n_components**2 + 2 * n_components * model.n_features - 1
+            return -2 * logL + p * logN
+        return None        
 
     def base_model(self, num_states):
         # with warnings.catch_warnings():
@@ -77,7 +133,8 @@ class SelectorBIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        return model_selector(self.__class__.__name__, self.lengths, self.min_n_components, self.max_n_components, 
+                              self.sequences, self.random_state)
 
 
 class SelectorDIC(ModelSelector):
@@ -96,14 +153,12 @@ class SelectorDIC(ModelSelector):
         # TODO implement model selection based on DIC scores
         raise NotImplementedError
 
-
 class SelectorCV(ModelSelector):
     ''' select best model based on average log Likelihood of cross-validation folds
 
     '''
 
     def select(self):
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-        # TODO implement model selection using CV
-        raise NotImplementedError
+        #print(self.__class__.__name__)
+        #print(super(self).__class__.__name__)
+        return super(ModelSelector, self).select()
