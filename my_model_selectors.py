@@ -40,31 +40,30 @@ class ModelSelector(object):
         best_components_number = self.min_n_components
         best_model = None
         n_splits = min(len(self.lengths), 3)
+        if n_splits == 1:
+            return self.base_model(self.n_constant)
         #print('Inside base select() function. Class:', self.__class__.__name__, 'n_splits:', n_splits)
         split_method = KFold(n_splits)
         for components in range(self.min_n_components, self.max_n_components + 1):
-            score = 0
+            score = []
             iter_counter = 0
             try:
                 for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
                     #print('Inside inner loop. Components:', components)
-                    iter_counter += 1
                     X_train, len_train = combine_sequences(cv_train_idx, self.sequences)
                     X_test, len_test = combine_sequences(cv_test_idx, self.sequences)
                     hmm_model = GaussianHMM(n_components = components, covariance_type = 'diag', n_iter = 1000,
                                             random_state = self.random_state, verbose = False).fit(X_train, len_train)
-                    score += self.model_score(hmm_model, X_test, len_test, components)
+                    iter_counter += 1
+                    score.append(self.model_score(hmm_model, X_test, len_test, components))
                     #print('Model fitted. score = ', score)
-                score /= iter_counter if iter_counter > 0 else 1
+                score = np.average(score)
                 if score > best_score:
                     best_score = score
                     best_components_number = components
                     best_model = hmm_model
             except:
                 pass
-        if self.__class__.__name__ == 'SelectorCV':
-            # need to train the model over all data available for Log likelihood model selection
-            best_model = self.base_model(best_components_number)
         return best_model
 
     def model_score(self, model, X, length, n_components):
@@ -172,7 +171,6 @@ class SelectorCV(ModelSelector):
     ''' select best model based on average log Likelihood of cross-validation folds
 
     '''
-
     def select(self):
         #print(self.__class__.__name__)
         return ModelSelector.select(self)
