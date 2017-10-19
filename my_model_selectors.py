@@ -35,17 +35,19 @@ class ModelSelector(object):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection using CV
-        #print('Inside base select() function. Sequences passed:', self.sequences)
+        
         best_score = -float('inf')
         best_components_number = self.min_n_components
         best_model = None
         n_splits = min(len(self.lengths), 3)
+        #print('Inside base select() function. Class:', self.__class__.__name__, 'n_splits:', n_splits)
         split_method = KFold(n_splits)
         for components in range(self.min_n_components, self.max_n_components + 1):
             score = 0
             iter_counter = 0
             try:
                 for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
+                    #print('Inside inner loop. Components:', components)
                     iter_counter += 1
                     X_train, len_train = combine_sequences(cv_train_idx, self.sequences)
                     X_test, len_test = combine_sequences(cv_test_idx, self.sequences)
@@ -65,9 +67,9 @@ class ModelSelector(object):
             best_model = self.base_model(best_components_number)
         return best_model
 
-    def model_score(model, X, length, n_components):
+    def model_score(self, model, X, length, n_components):
         """
-        Returns different model scores for CV, BIC and DIC according to appropriate formulas. Returned score defined
+        Returns different model scores for CV, BIC and DIC according to appropriate formulas. Returned score are defined
         by class_name.
         Valid class names:
         'SelectorCV': Log likelihood
@@ -76,15 +78,29 @@ class ModelSelector(object):
         """
         if self.__class__.__name__ == "SelectorCV":
             return model.score(X, length)
-        if class_name == "SelectorBIC":
+        if self.__class__.__name__ == "SelectorBIC":
             #according to https://discussions.udacity.com/t/parameter-in-bic-selector/394318/2
             #BIC = -2 * LogL + p * LogN
             #LogN = log(len(X))
             #p = n_components^2 + 2*n_components*model.n_features - 1
+            #print('Inside BIC scoring')
             logL = model.score(X, length)
             logN = np.log(len(X))
             p = n_components**2 + 2 * n_components * model.n_features - 1
             return -2 * logL + p * logN
+        if self.__class__.__name__ == "SelectorDIC":
+            #according to Biem article http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.58.6208&rep=rep1&type=pdf
+            #DIC = LogL - mean(LogL for all dictionary words but the current)
+            logL = model.score(X, length)
+            #print('Inside DIC scoring, len(self.hwords = )', len(self.hwords), 'logL =', logL)
+            words_score = {}
+            for word, (X_anti, length_anti) in self.hwords.items():
+                score = None
+                if self.this_word != word:
+                    score = model.score(X_anti, length_anti)
+                if score is not None:
+                    words_score[word] = score
+            return logL - np.mean([words_score[word] for word in words_score.keys()])
         return None        
 
     def base_model(self, num_states):
@@ -133,8 +149,7 @@ class SelectorBIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on BIC scores
-        return model_selector(self.__class__.__name__, self.lengths, self.min_n_components, self.max_n_components, 
-                              self.sequences, self.random_state)
+        return ModelSelector.select(self)
 
 
 class SelectorDIC(ModelSelector):
@@ -151,7 +166,7 @@ class SelectorDIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        return ModelSelector.select(self)
 
 class SelectorCV(ModelSelector):
     ''' select best model based on average log Likelihood of cross-validation folds
@@ -160,5 +175,4 @@ class SelectorCV(ModelSelector):
 
     def select(self):
         #print(self.__class__.__name__)
-        #print(super(self).__class__.__name__)
-        return super(ModelSelector, self).select()
+        return ModelSelector.select(self)
