@@ -29,78 +29,7 @@ class ModelSelector(object):
         self.verbose = verbose
 
     def select(self):
-        """
-        Universal model selector function for select() methods of SelectorCV, SelectorBIC and SelectorDIC
-        """
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-        # TODO implement model selection using CV
-        
-        best_score = -float('inf')
-        best_components_number = self.min_n_components
-        best_model = None
-        n_splits = min(len(self.lengths), 3)
-        if n_splits == 1:
-            return self.base_model(self.n_constant)
-        #print('Inside base select() function. Class:', self.__class__.__name__, 'n_splits:', n_splits)
-        split_method = KFold(n_splits)
-        for components in range(self.min_n_components, self.max_n_components + 1):
-            score = []
-            iter_counter = 0
-            try:
-                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
-                    #print('Inside inner loop. Components:', components)
-                    X_train, len_train = combine_sequences(cv_train_idx, self.sequences)
-                    X_test, len_test = combine_sequences(cv_test_idx, self.sequences)
-                    hmm_model = GaussianHMM(n_components = components, covariance_type = 'diag', n_iter = 1000,
-                                            random_state = self.random_state, verbose = False).fit(X_train, len_train)
-                    iter_counter += 1
-                    score.append(self.model_score(hmm_model, X_test, len_test, components))
-                    #print('Model fitted. score = ', score)
-                score = np.average(score)
-                if score > best_score:
-                    best_score = score
-                    best_components_number = components
-                    best_model = hmm_model
-            except:
-                pass
-        return best_model
-
-    def model_score(self, model, X, length, n_components):
-        """
-        Returns different model scores for CV, BIC and DIC according to appropriate formulas. Returned score are defined
-        by class_name.
-        Valid class names:
-        'SelectorCV': Log likelihood
-        'SelectorBIC': Bayesian information criteria
-        'SelectorDIC': Discriminative information criteria
-        """
-        if self.__class__.__name__ == "SelectorCV":
-            return model.score(X, length)
-        if self.__class__.__name__ == "SelectorBIC":
-            #according to https://discussions.udacity.com/t/parameter-in-bic-selector/394318/2
-            #BIC = -2 * LogL + p * LogN
-            #LogN = log(len(X))
-            #p = n_components^2 + 2*n_components*model.n_features - 1
-            #print('Inside BIC scoring')
-            logL = model.score(X, length)
-            logN = np.log(len(X))
-            p = n_components**2 + 2 * n_components * model.n_features - 1
-            return -2 * logL + p * logN
-        if self.__class__.__name__ == "SelectorDIC":
-            #according to Biem article http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.58.6208&rep=rep1&type=pdf
-            #DIC = LogL - mean(LogL for all dictionary words but the current)
-            logL = model.score(X, length)
-            #print('Inside DIC scoring, len(self.hwords = )', len(self.hwords), 'logL =', logL)
-            words_score = {}
-            for word, (X_anti, length_anti) in self.hwords.items():
-                score = None
-                if self.this_word != word:
-                    score = model.score(X_anti, length_anti)
-                if score is not None:
-                    words_score[word] = score
-            return logL - np.mean([words_score[word] for word in words_score.keys()])
-        return None        
+        raise NotImplementedError
 
     def base_model(self, num_states):
         # with warnings.catch_warnings():
@@ -140,19 +69,50 @@ class SelectorBIC(ModelSelector):
     """
 
     def select(self):
-        """ select the best model for self.this_word based on
+        """ 
+        Selects the best model for self.this_word based on
         BIC score for n between self.min_n_components and self.max_n_components
 
         :return: GaussianHMM object
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on BIC scores
-        return ModelSelector.select(self)
-
+        best_score = -float('inf')
+        best_components_number = self.min_n_components
+        best_model = None
+        n_splits = min(len(self.lengths), 3)
+        if n_splits == 1:
+            return self.base_model(self.n_constant)
+        #print('Inside base select() function. Class:', self.__class__.__name__, 'n_splits:', n_splits)
+        split_method = KFold(n_splits)
+        for components in range(self.min_n_components, self.max_n_components + 1):
+            score = []
+            iter_counter = 0
+            try:
+                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
+                    #print('Inside inner loop. Components:', components)
+                    X_train, len_train = combine_sequences(cv_train_idx, self.sequences)
+                    X_test, len_test = combine_sequences(cv_test_idx, self.sequences)
+                    hmm_model = GaussianHMM(n_components = components, covariance_type = 'diag', n_iter = 1000,
+                                            random_state = self.random_state, verbose = False).fit(X_train, len_train)
+                    iter_counter += 1
+                    logL = hmm_model.score(X_test, len_test)
+                    logN = np.log(len(X_test))
+                    p = components**2 + 2 * components * hmm_model.n_features - 1
+                    score.append(-2 * logL + p * logN)
+                    #print('Model fitted. score = ', score)
+                score = np.average(score)
+                if score > best_score:
+                    best_score = score
+                    best_components_number = components
+                    best_model = hmm_model
+            except:
+                pass
+        return best_model
 
 class SelectorDIC(ModelSelector):
-    ''' select best model based on Discriminative Information Criterion
+    ''' 
+    Selects best model based on Discriminative Information Criterion
 
     Biem, Alain. "A model selection criterion for classification: Application to hmm topology optimization."
     Document Analysis and Recognition, 2003. Proceedings. Seventh International Conference on. IEEE, 2003.
@@ -164,13 +124,80 @@ class SelectorDIC(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on DIC scores
-        return ModelSelector.select(self)
+        best_score = -float('inf')
+        best_components_number = self.min_n_components
+        best_model = None
+        n_splits = min(len(self.lengths), 3)
+        if n_splits == 1:
+            return self.base_model(self.n_constant)
+        #print('Inside base select() function. Class:', self.__class__.__name__, 'n_splits:', n_splits)
+        split_method = KFold(n_splits)
+        for components in range(self.min_n_components, self.max_n_components + 1):
+            score = []
+            iter_counter = 0
+            try:
+                score = []
+                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
+                    #print('Inside inner loop. Components:', components)
+                    X_train, len_train = combine_sequences(cv_train_idx, self.sequences)
+                    X_test, len_test = combine_sequences(cv_test_idx, self.sequences)
+                    hmm_model = GaussianHMM(n_components = components, covariance_type = 'diag', n_iter = 1000,
+                                            random_state = self.random_state, verbose = False).fit(X_train, len_train)
+                    iter_counter += 1
+                    words_score = {}
+                    logL = hmm_model.score(X_test, len_test)
+                    #print('HWords test print')
+                    #print(len(self.hwords))
+                    for word, (X_anti, length_anti) in self.hwords.items():
+                        sc = None
+                        if self.this_word != word:
+                            sc = hmm_model.score(X_anti, length_anti)
+                        if sc is not None:
+                            words_score[word] = sc
+                    score.append(logL - np.mean([words_score[word] for word in words_score.keys()]))
+                    #print('Model fitted. score = ', score)
+                score = np.average(score)
+                if score > best_score:
+                    best_score = score
+                    best_components_number = components
+                    best_model = hmm_model
+            except:
+                pass
+        return best_model
 
 class SelectorCV(ModelSelector):
     ''' select best model based on average log Likelihood of cross-validation folds
 
     '''
     def select(self):
-        #print(self.__class__.__name__)
-        return ModelSelector.select(self)
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+        best_score = -float('inf')
+        best_components_number = self.min_n_components
+        best_model = None
+        n_splits = min(len(self.lengths), 3)
+        if n_splits == 1:
+            return self.base_model(self.n_constant)
+        #print('Inside base select() function. Class:', self.__class__.__name__, 'n_splits:', n_splits)
+        split_method = KFold(n_splits)
+        for components in range(self.min_n_components, self.max_n_components + 1):
+            score = []
+            iter_counter = 0
+            try:
+                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
+                    #print('Inside inner loop. Components:', components)
+                    X_train, len_train = combine_sequences(cv_train_idx, self.sequences)
+                    X_test, len_test = combine_sequences(cv_test_idx, self.sequences)
+                    hmm_model = GaussianHMM(n_components = components, covariance_type = 'diag', n_iter = 1000,
+                                            random_state = self.random_state, verbose = False).fit(X_train, len_train)
+                    iter_counter += 1
+                    score.append(hmm_model.score(X_test, len_test))
+                    #print('Model fitted. score = ', score)
+                score = np.average(score)
+                if score > best_score:
+                    best_score = score
+                    best_components_number = components
+                    best_model = hmm_model
+            except:
+                pass
+        return best_model
