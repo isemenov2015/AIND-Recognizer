@@ -20,7 +20,7 @@ def recognize(models: dict, test_set: SinglesData):
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     probabilities = []
     guesses = []
-    # TODO implement the recognizer
+    # DONE implement the recognizer
     # return probabilities, guesses
     for ind in range(test_set.num_items):
         best_probability = float('-inf')

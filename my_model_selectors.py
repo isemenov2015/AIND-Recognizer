@@ -77,38 +77,24 @@ class SelectorBIC(ModelSelector):
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        best_score = -float('inf')
+        best_score = float('inf')
         best_components_number = self.min_n_components
         best_model = None
-        n_splits = min(len(self.lengths), 3)
-        if n_splits == 1:
-            return self.base_model(self.n_constant)
-        #print('Inside base select() function. Class:', self.__class__.__name__, 'n_splits:', n_splits)
-        split_method = KFold(n_splits)
         for components in range(self.min_n_components, self.max_n_components + 1):
-            score = []
-            iter_counter = 0
             try:
-                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
-                    #print('Inside inner loop. Components:', components)
-                    X_train, len_train = combine_sequences(cv_train_idx, self.sequences)
-                    X_test, len_test = combine_sequences(cv_test_idx, self.sequences)
-                    hmm_model = GaussianHMM(n_components = components, covariance_type = 'diag', n_iter = 1000,
-                                            random_state = self.random_state, verbose = False).fit(X_train, len_train)
-                    iter_counter += 1
-                    logL = hmm_model.score(X_test, len_test)
-                    logN = np.log(len(X_test))
-                    p = components**2 + 2 * components * hmm_model.n_features - 1
-                    score.append(-2 * logL + p * logN)
-                    #print('Model fitted. score = ', score)
-                score = np.average(score)
-                if score > best_score:
+                hmm_model = self.base_model(components)
+                logL = hmm_model.score(self.X, self.lengths)
+                logN = np.log(self.X.shape[0])
+                n_features = self.X.shape[1]
+                p = components**2 + 2 * components * n_features - 1
+                score = -2 * logL + p * logN
+                if score < best_score:
                     best_score = score
                     best_components_number = components
                     best_model = hmm_model
             except:
                 pass
-        return best_model
+        return best_model if best_model is not None else self.base_model(self.n_constant)
 
 class SelectorDIC(ModelSelector):
     ''' 
@@ -127,46 +113,28 @@ class SelectorDIC(ModelSelector):
         best_score = -float('inf')
         best_components_number = self.min_n_components
         best_model = None
-        n_splits = min(len(self.lengths), 3)
-        if n_splits == 1:
-            return self.base_model(self.n_constant)
-        #print('Inside base select() function. Class:', self.__class__.__name__, 'n_splits:', n_splits)
-        split_method = KFold(n_splits)
         for components in range(self.min_n_components, self.max_n_components + 1):
-            score = []
-            iter_counter = 0
             try:
-                score = []
-                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
-                    #print('Inside inner loop. Components:', components)
-                    X_train, len_train = combine_sequences(cv_train_idx, self.sequences)
-                    X_test, len_test = combine_sequences(cv_test_idx, self.sequences)
-                    hmm_model = GaussianHMM(n_components = components, covariance_type = 'diag', n_iter = 1000,
-                                            random_state = self.random_state, verbose = False).fit(X_train, len_train)
-                    iter_counter += 1
-                    words_score = {}
-                    logL = hmm_model.score(X_test, len_test)
-                    #print('HWords test print')
-                    #print(len(self.hwords))
-                    for word, (X_anti, length_anti) in self.hwords.items():
-                        sc = None
-                        if self.this_word != word:
-                            sc = hmm_model.score(X_anti, length_anti)
-                        if sc is not None:
-                            words_score[word] = sc
-                    score.append(logL - np.mean([words_score[word] for word in words_score.keys()]))
-                    #print('Model fitted. score = ', score)
-                score = np.average(score)
+                hmm_model = self.base_model(components)
+                words_score = {}
+                logL = hmm_model.score(self.X, self.lengths)
+                for word, (X_anti, length_anti) in self.hwords.items():
+                    sc = None
+                    if self.this_word != word:
+                        sc = hmm_model.score(X_anti, length_anti)
+                    if sc is not None:
+                        words_score[word] = sc
+                score = logL - np.mean([words_score[word] for word in words_score.keys()])
                 if score > best_score:
                     best_score = score
                     best_components_number = components
                     best_model = hmm_model
             except:
                 pass
-        return best_model
+        return best_model if best_model is not None else self.base_model(self.n_constant)
 
 class SelectorCV(ModelSelector):
-    ''' select best model based on average log Likelihood of cross-validation folds
+    ''' selects best model based on average log Likelihood of cross-validation folds
 
     '''
     def select(self):
@@ -178,21 +146,18 @@ class SelectorCV(ModelSelector):
         n_splits = min(len(self.lengths), 3)
         if n_splits == 1:
             return self.base_model(self.n_constant)
-        #print('Inside base select() function. Class:', self.__class__.__name__, 'n_splits:', n_splits)
         split_method = KFold(n_splits)
         for components in range(self.min_n_components, self.max_n_components + 1):
             score = []
             iter_counter = 0
             try:
                 for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
-                    #print('Inside inner loop. Components:', components)
                     X_train, len_train = combine_sequences(cv_train_idx, self.sequences)
                     X_test, len_test = combine_sequences(cv_test_idx, self.sequences)
                     hmm_model = GaussianHMM(n_components = components, covariance_type = 'diag', n_iter = 1000,
                                             random_state = self.random_state, verbose = False).fit(X_train, len_train)
                     iter_counter += 1
                     score.append(hmm_model.score(X_test, len_test))
-                    #print('Model fitted. score = ', score)
                 score = np.average(score)
                 if score > best_score:
                     best_score = score
